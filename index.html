@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notion-like Editor</title>
+    <title>Notion-like Markdown Editor</title>
     
     <!-- Phosphor Icons -->
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
@@ -14,6 +14,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900&display=swap" rel="stylesheet">
 
+    <!-- Marked.js for Markdown Parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <style>
         :root {
             --color-primary: #c15f3c;
@@ -21,18 +24,16 @@
             --color-bg: #f4f3ee;
             --color-surface: #ffffff;
             --color-text: #37352f;
+            --color-border: #e1e1e0;
             --font-main: 'Merriweather', serif;
+            --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif;
             --sidebar-width: 240px;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
 
         body {
-            font-family: var(--font-main);
+            font-family: var(--font-ui);
             background-color: var(--color-bg);
             color: var(--color-text);
             height: 100vh;
@@ -44,12 +45,12 @@
         .sidebar {
             width: var(--sidebar-width);
             background-color: var(--color-surface);
-            border-right: 1px solid rgba(0,0,0,0.05);
+            border-right: 1px solid var(--color-border);
             display: flex;
             flex-direction: column;
-            padding: 16px;
+            padding: 12px;
             transition: transform 0.3s ease;
-            z-index: 10;
+            z-index: 20;
         }
 
         .sidebar-header {
@@ -57,65 +58,74 @@
             align-items: center;
             gap: 10px;
             padding: 8px;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
             border-radius: 6px;
             cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .sidebar-header:hover {
-            background-color: var(--color-bg);
-        }
-
-        .sidebar-header img {
-            width: 24px;
-            height: 24px;
-            border-radius: 4px;
-        }
-
-        .sidebar-header span {
-            font-weight: 700;
+            font-weight: 600;
             font-size: 14px;
-            color: var(--color-text);
         }
 
-        .nav-item {
+        .sidebar-header:hover { background-color: var(--color-bg); }
+
+        .file-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .file-item {
             display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: space-between;
             padding: 8px 10px;
             border-radius: 6px;
-            color: var(--color-text);
-            text-decoration: none;
-            font-size: 14px;
-            margin-bottom: 4px;
             cursor: pointer;
+            font-size: 14px;
+            color: var(--color-text);
             transition: background 0.2s;
+            group: file-item;
         }
 
-        .nav-item:hover {
-            background-color: var(--color-bg);
+        .file-item:hover { background-color: var(--color-bg); }
+        .file-item.active { background-color: rgba(193, 95, 60, 0.1); color: var(--color-primary); font-weight: 500; }
+        
+        .file-item-actions {
+            display: none;
+            gap: 4px;
         }
-
-        .nav-item i {
-            font-size: 18px;
-            color: var(--color-secondary);
+        .file-item:hover .file-item-actions { display: flex; }
+        
+        .icon-btn-sm {
+            background: none; border: none; cursor: pointer;
+            padding: 4px; border-radius: 4px; color: var(--color-secondary);
+            display: flex; align-items: center; justify-content: center;
         }
-
-        .nav-item.active {
-            background-color: rgba(193, 95, 60, 0.1);
-            color: var(--color-primary);
-        }
-
-        .nav-item.active i {
-            color: var(--color-primary);
-        }
+        .icon-btn-sm:hover { background-color: rgba(0,0,0,0.1); color: var(--color-primary); }
 
         .sidebar-footer {
             margin-top: auto;
-            border-top: 1px solid rgba(0,0,0,0.05);
-            padding-top: 16px;
+            border-top: 1px solid var(--color-border);
+            padding-top: 12px;
         }
+
+        .btn-new-file {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 8px 10px;
+            background: none;
+            border: 1px dashed var(--color-secondary);
+            border-radius: 6px;
+            color: var(--color-secondary);
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+        .btn-new-file:hover { border-color: var(--color-primary); color: var(--color-primary); background: rgba(193, 95, 60, 0.05); }
 
         /* Main Content */
         .main-content {
@@ -123,23 +133,23 @@
             display: flex;
             flex-direction: column;
             position: relative;
-            overflow: hidden;
+            background-color: var(--color-surface);
         }
 
+        /* Header */
         .top-bar {
-            height: 48px;
+            height: 50px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 24px;
-            background-color: rgba(255,255,255,0.5);
-            backdrop-filter: blur(5px);
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 5;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.2s;
+            background: var(--color-surface);
+            z-index: 10;
         }
+        
+        .top-bar.scrolled { border-bottom-color: var(--color-border); }
 
         .breadcrumbs {
             display: flex;
@@ -147,231 +157,127 @@
             gap: 8px;
             font-size: 14px;
             color: var(--color-secondary);
+            flex: 1;
         }
+
+        .file-title-input {
+            border: none;
+            background: transparent;
+            font-size: 14px;
+            color: var(--color-text);
+            font-weight: 500;
+            width: 200px;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .file-title-input:hover { background-color: var(--color-bg); }
+        .file-title-input:focus { background-color: var(--color-bg); box-shadow: 0 0 0 2px rgba(193, 95, 60, 0.2); }
 
         .actions {
             display: flex;
             gap: 8px;
+            align-items: center;
         }
 
         .icon-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 6px;
-            border-radius: 4px;
+            background: none; border: none; cursor: pointer;
+            padding: 6px 10px; border-radius: 6px;
             color: var(--color-secondary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: flex; align-items: center; gap: 6px;
+            font-size: 14px; font-family: var(--font-ui);
             transition: all 0.2s;
         }
+        .icon-btn:hover { background-color: var(--color-bg); color: var(--color-primary); }
+        .icon-btn.active { background-color: var(--color-bg); color: var(--color-primary); }
+        .icon-btn i { font-size: 18px; }
 
-        .icon-btn:hover {
-            background-color: var(--color-bg);
-            color: var(--color-primary);
-        }
-
-        .editor-container {
+        /* Editor Area */
+        .editor-wrapper {
             flex: 1;
             overflow-y: auto;
-            padding: 80px 20% 100px;
+            padding: 40px 20% 100px;
             scroll-behavior: smooth;
         }
 
         .page-cover {
-            height: 200px;
+            height: 180px;
             width: 100%;
             background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-            opacity: 0.1;
+            opacity: 0.15;
             border-radius: 8px;
-            margin-bottom: 40px;
-            display: none; /* Hidden by default */
+            margin-bottom: 32px;
+            display: none;
         }
 
-        .page-title {
-            font-size: 40px;
-            font-weight: 700;
-            border: none;
-            outline: none;
+        /* Textarea Editor */
+        #markdown-editor {
             width: 100%;
-            background: transparent;
-            margin-bottom: 24px;
-            color: var(--color-text);
+            min-height: 60vh;
+            border: none;
+            resize: none;
             font-family: var(--font-main);
-        }
-
-        .page-title::placeholder {
-            color: var(--color-secondary);
-            opacity: 0.5;
-        }
-
-        /* Editor Styles */
-        #editor {
-            outline: none;
             font-size: 17px;
-            line-height: 1.6;
+            line-height: 1.7;
             color: var(--color-text);
-            min-height: 300px;
+            background: transparent;
+            display: block;
         }
+        #markdown-editor::placeholder { color: var(--color-secondary); opacity: 0.5; }
 
-        #editor:empty:before {
-            content: "Type '/' for commands";
-            color: var(--color-secondary);
-            opacity: 0.5;
-            pointer-events: none;
+        /* Preview Mode Styles */
+        .preview-content {
+            font-family: var(--font-main);
+            font-size: 17px;
+            line-height: 1.7;
+            color: var(--color-text);
+            display: none;
         }
-
-        #editor h1 { font-size: 2em; margin: 0.67em 0; font-weight: 700; }
-        #editor h2 { font-size: 1.5em; margin: 0.75em 0; font-weight: 700; }
-        #editor h3 { font-size: 1.17em; margin: 0.83em 0; font-weight: 700; }
-        #editor p { margin: 0.5em 0; }
-        #editor ul { padding-left: 20px; margin: 0.5em 0; }
-        #editor blockquote {
-            border-left: 3px solid var(--color-primary);
+        .preview-content h1 { font-size: 2.2em; margin: 0.8em 0 0.4em; font-weight: 900; color: var(--color-text); }
+        .preview-content h2 { font-size: 1.6em; margin: 0.8em 0 0.4em; font-weight: 700; border-bottom: 1px solid var(--color-border); padding-bottom: 8px; }
+        .preview-content h3 { font-size: 1.3em; margin: 0.8em 0 0.4em; font-weight: 600; }
+        .preview-content p { margin: 0.8em 0; }
+        .preview-content ul, .preview-content ol { margin: 0.8em 0; padding-left: 24px; }
+        .preview-content li { margin-bottom: 4px; }
+        .preview-content blockquote {
+            border-left: 4px solid var(--color-primary);
             padding-left: 16px;
             margin: 16px 0;
             color: var(--color-secondary);
             font-style: italic;
+            background: var(--color-bg);
+            padding: 12px 16px;
+            border-radius: 0 6px 6px 0;
         }
-        #editor code {
+        .preview-content code {
             background-color: var(--color-bg);
             padding: 2px 6px;
             border-radius: 4px;
-            font-family: monospace;
+            font-family: 'Courier New', monospace;
             font-size: 0.9em;
             color: var(--color-primary);
         }
-        #editor pre {
-            background-color: var(--color-bg);
+        .preview-content pre {
+            background-color: #2d2d2d;
+            color: #f8f8f2;
             padding: 16px;
             border-radius: 8px;
             overflow-x: auto;
             margin: 16px 0;
         }
-        #editor pre code {
-            background: none;
-            padding: 0;
-            color: inherit;
-        }
+        .preview-content pre code { background: none; color: inherit; padding: 0; }
+        .preview-content hr { border: 0; border-top: 1px solid var(--color-border); margin: 24px 0; }
+        .preview-content img { max-width: 100%; border-radius: 8px; margin: 16px 0; }
+        .preview-content a { color: var(--color-primary); text-decoration: none; border-bottom: 1px solid transparent; }
+        .preview-content a:hover { border-bottom-color: var(--color-primary); }
 
-        /* Slash Menu */
-        .slash-menu {
-            position: absolute;
-            background: var(--color-surface);
-            border: 1px solid rgba(0,0,0,0.1);
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            width: 250px;
-            padding: 8px;
-            display: none;
-            flex-direction: column;
-            z-index: 100;
-            animation: fadeIn 0.1s ease-out;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .slash-menu-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 8px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .slash-menu-item:hover, .slash-menu-item.selected {
-            background-color: var(--color-bg);
-        }
-
-        .slash-menu-item i {
-            font-size: 20px;
-            color: var(--color-secondary);
-            width: 24px;
-            text-align: center;
-        }
-
-        .slash-menu-item span {
-            font-size: 14px;
-            font-weight: 500;
-        }
-
-        .slash-menu-item small {
-            margin-left: auto;
-            color: var(--color-secondary);
-            font-size: 12px;
-        }
-
-        .menu-category {
-            font-size: 11px;
-            font-weight: 700;
-            color: var(--color-secondary);
-            padding: 8px 12px 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        /* Floating Toolbar */
-        .floating-toolbar {
-            position: absolute;
-            background: var(--color-surface);
-            border: 1px solid rgba(0,0,0,0.1);
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            padding: 6px;
-            display: none;
-            gap: 4px;
-            z-index: 50;
-            align-items: center;
-        }
-
-        .floating-toolbar button {
-            background: none;
-            border: none;
-            padding: 6px;
-            border-radius: 4px;
-            cursor: pointer;
-            color: var(--color-secondary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .floating-toolbar button:hover {
-            background-color: var(--color-bg);
-            color: var(--color-primary);
-        }
-
-        .floating-toolbar button.active {
-            background-color: var(--color-bg);
-            color: var(--color-primary);
-        }
-
-        .divider {
-            width: 1px;
-            height: 20px;
-            background-color: rgba(0,0,0,0.1);
-            margin: 0 4px;
-        }
+        .hidden { display: none !important; }
 
         /* Responsive */
         @media (max-width: 768px) {
-            .sidebar {
-                position: absolute;
-                height: 100%;
-                transform: translateX(-100%);
-            }
-            .sidebar.open {
-                transform: translateX(0);
-            }
-            .editor-container {
-                padding: 80px 24px 100px;
-            }
+            .sidebar { position: absolute; height: 100%; transform: translateX(-100%); box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
+            .sidebar.open { transform: translateX(0); }
+            .editor-wrapper { padding: 24px; }
+            .top-bar { padding: 0 16px; }
         }
     </style>
 </head>
@@ -380,293 +286,306 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <img src="https://image.qwenlm.ai/public_source/08a6682f-aa15-4bdb-ae07-770d2b58f456/194d071e6-a750-4c47-b671-baad3f2ef162.png" alt="Logo">
+            <img src="https://image.qwenlm.ai/public_source/08a6682f-aa15-4bdb-ae07-770d2b58f456/194d071e6-a750-4c47-b671-baad3f2ef162.png" alt="Logo" style="width: 24px; height: 24px; border-radius: 4px;">
             <span>My Workspace</span>
-            <i class="ph ph-caret-down" style="margin-left: auto; font-size: 14px;"></i>
+            <i class="ph ph-caret-down" style="margin-left: auto; font-size: 14px; color: var(--color-secondary);"></i>
         </div>
 
-        <nav>
-            <div class="nav-item active">
-                <i class="ph-fill ph-file-text"></i>
-                <span>Untitled</span>
-            </div>
-            <div class="nav-item">
-                <i class="ph ph-plus"></i>
-                <span>New Page</span>
-            </div>
-            <div class="nav-item">
-                <i class="ph ph-chat-circle-text"></i>
-                <span>Comments</span>
-            </div>
-            <div class="nav-item">
-                <i class="ph ph-clock-counter-clockwise"></i>
-                <span>History</span>
-            </div>
-            <div class="nav-item">
-                <i class="ph ph-gear"></i>
-                <span>Settings</span>
-            </div>
-        </nav>
+        <button class="btn-new-file" id="btn-new-file">
+            <i class="ph ph-plus"></i>
+            <span>New Page</span>
+        </button>
+
+        <div class="file-list" id="file-list">
+            <!-- Files injected here -->
+        </div>
 
         <div class="sidebar-footer">
-            <div class="nav-item">
-                <i class="ph ph-trash"></i>
+            <div class="file-item" style="color: var(--color-secondary);">
+                <i class="ph ph-trash" style="margin-right: 8px;"></i>
                 <span>Trash</span>
             </div>
-            <div class="nav-item">
-                <i class="ph ph-question"></i>
-                <span>Help & Support</span>
+            <div class="file-item" style="color: var(--color-secondary);">
+                <i class="ph ph-gear" style="margin-right: 8px;"></i>
+                <span>Settings</span>
             </div>
         </div>
     </aside>
 
     <!-- Main Content -->
     <main class="main-content">
-        <!-- Top Bar -->
-        <div class="top-bar">
+        <!-- Header -->
+        <div class="top-bar" id="top-bar">
             <div class="breadcrumbs">
-                <button class="icon-btn" id="toggle-sidebar" style="margin-right: 8px;">
-                    <i class="ph ph-list"></i>
-                </button>
-                <span>My Workspace</span>
+                <button class="icon-btn" id="toggle-sidebar" style="padding: 4px;"><i class="ph ph-list"></i></button>
+                <span>Workspace</span>
                 <i class="ph ph-caret-right" style="font-size: 12px;"></i>
-                <span style="color: var(--color-text);">Untitled</span>
+                <input type="text" class="file-title-input" id="file-title-input" value="Untitled">
             </div>
+            
             <div class="actions">
-                <button class="icon-btn" title="Share"><i class="ph ph-share-network"></i></button>
-                <button class="icon-btn" title="Favorite"><i class="ph ph-star"></i></button>
-                <button class="icon-btn" title="More"><i class="ph ph-dots-three"></i></button>
+                <button class="icon-btn" id="btn-preview-toggle" title="Toggle Preview">
+                    <i class="ph ph-eye"></i>
+                    <span style="font-size: 13px;">Preview</span>
+                </button>
+                <div style="width: 1px; height: 20px; background: var(--color-border); margin: 0 4px;"></div>
+                <button class="icon-btn" id="btn-clear" title="Clear Content">
+                    <i class="ph ph-trash"></i>
+                </button>
+                <button class="icon-btn" id="btn-download" title="Download .md">
+                    <i class="ph ph-download-simple"></i>
+                </button>
+                <button class="icon-btn" id="btn-more">
+                    <i class="ph ph-dots-three"></i>
+                </button>
             </div>
         </div>
 
         <!-- Editor Area -->
-        <div class="editor-container" id="editor-container">
+        <div class="editor-wrapper" id="editor-wrapper">
             <div class="page-cover" id="page-cover"></div>
             
-            <input type="text" class="page-title" id="page-title" placeholder="Untitled" value="Untitled">
+            <!-- Raw Markdown Input -->
+            <textarea id="markdown-editor" placeholder="Type markdown here... (# Header, **bold**, - list)"></textarea>
             
-            <div id="editor" contenteditable="true" spellcheck="false"></div>
-        </div>
-
-        <!-- Slash Command Menu -->
-        <div class="slash-menu" id="slash-menu">
-            <div class="menu-category">Basic blocks</div>
-            <div class="slash-menu-item" data-command="formatBlock" data-value="H1">
-                <i class="ph ph-text-h-one"></i>
-                <span>Heading 1</span>
-                <small>H1</small>
-            </div>
-            <div class="slash-menu-item" data-command="formatBlock" data-value="H2">
-                <i class="ph ph-text-h-two"></i>
-                <span>Heading 2</span>
-                <small>H2</small>
-            </div>
-            <div class="slash-menu-item" data-command="formatBlock" data-value="P">
-                <i class="ph ph-text-t"></i>
-                <span>Text</span>
-                <small>Just start writing...</small>
-            </div>
-            
-            <div class="menu-category">List</div>
-            <div class="slash-menu-item" data-command="insertUnorderedList">
-                <i class="ph ph-list-bullets"></i>
-                <span>Bulleted list</span>
-            </div>
-            <div class="slash-menu-item" data-command="insertOrderedList">
-                <i class="ph ph-list-numbers"></i>
-                <span>Numbered list</span>
-            </div>
-
-            <div class="menu-category">Advanced</div>
-            <div class="slash-menu-item" data-command="formatBlock" data-value="BLOCKQUOTE">
-                <i class="ph ph-quotes"></i>
-                <span>Quote</span>
-            </div>
-            <div class="slash-menu-item" data-command="formatBlock" data-value="PRE">
-                <i class="ph ph-code"></i>
-                <span>Code</span>
-            </div>
-        </div>
-
-        <!-- Floating Toolbar -->
-        <div class="floating-toolbar" id="floating-toolbar">
-            <button data-command="bold" title="Bold"><i class="ph ph-text-b"></i></button>
-            <button data-command="italic" title="Italic"><i class="ph ph-text-italic"></i></button>
-            <button data-command="underline" title="Underline"><i class="ph ph-text-underline"></i></button>
-            <button data-command="strikeThrough" title="Strikethrough"><i class="ph ph-text-strikethrough"></i></button>
-            <div class="divider"></div>
-            <button data-command="formatBlock" data-value="H1" title="Heading 1"><i class="ph ph-text-h-one"></i></button>
-            <button data-command="formatBlock" data-value="H2" title="Heading 2"><i class="ph ph-text-h-two"></i></button>
-            <div class="divider"></div>
-            <button data-command="insertUnorderedList" title="Bullet List"><i class="ph ph-list-bullets"></i></button>
-            <button data-command="insertOrderedList" title="Numbered List"><i class="ph ph-list-numbers"></i></button>
+            <!-- Rendered Preview -->
+            <div id="preview-content" class="preview-content"></div>
         </div>
     </main>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const editor = document.getElementById('editor');
-            const pageTitle = document.getElementById('page-title');
-            const slashMenu = document.getElementById('slash-menu');
-            const floatingToolbar = document.getElementById('floating-toolbar');
-            const toggleSidebarBtn = document.getElementById('toggle-sidebar');
-            const sidebar = document.getElementById('sidebar');
-            const pageCover = document.getElementById('page-cover');
+        // State Management
+        let files = [];
+        let currentFileId = null;
+        let isPreviewMode = false;
 
-            // Load from Local Storage
-            const savedContent = localStorage.getItem('notion-clone-content');
-            const savedTitle = localStorage.getItem('notion-clone-title');
-            
-            if (savedContent) {
-                editor.innerHTML = savedContent;
+        // DOM Elements
+        const fileListEl = document.getElementById('file-list');
+        const editorEl = document.getElementById('markdown-editor');
+        const previewEl = document.getElementById('preview-content');
+        const titleInputEl = document.getElementById('file-title-input');
+        const btnNewFile = document.getElementById('btn-new-file');
+        const btnPreviewToggle = document.getElementById('btn-preview-toggle');
+        const btnClear = document.getElementById('btn-clear');
+        const btnDownload = document.getElementById('btn-download');
+        const toggleSidebarBtn = document.getElementById('toggle-sidebar');
+        const sidebar = document.getElementById('sidebar');
+        const topBar = document.getElementById('top-bar');
+        const pageCover = document.getElementById('page-cover');
+
+        // Initialize
+        function init() {
+            const savedFiles = localStorage.getItem('notion-md-files');
+            if (savedFiles) {
+                files = JSON.parse(savedFiles);
             } else {
-                editor.innerHTML = '<p>Start writing... Type <b>/</b> for commands.</p>';
+                // Create default file
+                const defaultFile = createNewFile('Welcome');
+                defaultFile.content = "# Welcome to your new editor\n\nThis is a **live markdown** editor.\n\n- Type markdown on the left\n- Toggle preview to see the result\n- Everything saves automatically!";
+                files = [defaultFile];
             }
+
+            if (files.length > 0) {
+                // Try to load last active or first file
+                const lastId = localStorage.getItem('notion-md-last-id');
+                currentFileId = lastId && files.find(f => f.id === lastId) ? lastId : files[0].id;
+            }
+
+            renderFileList();
+            loadFile(currentFileId);
             
-            if (savedTitle) {
-                pageTitle.value = savedTitle;
+            // Event Listeners
+            editorEl.addEventListener('input', handleInput);
+            titleInputEl.addEventListener('input', handleTitleInput);
+            btnNewFile.addEventListener('click', createNewFileHandler);
+            btnPreviewToggle.addEventListener('click', togglePreview);
+            btnClear.addEventListener('click', clearContent);
+            btnDownload.addEventListener('click', downloadFile);
+            toggleSidebarBtn.addEventListener('click', () => {
+                if (window.innerWidth <= 768) sidebar.classList.toggle('open');
+            });
+
+            // Scroll effect for header
+            document.getElementById('editor-wrapper').addEventListener('scroll', () => {
+                if (this.scrollTop > 10) topBar.classList.add('scrolled');
+                else topBar.classList.remove('scrolled');
+            });
+        }
+
+        // Core Functions
+        function createNewFile(title = 'Untitled') {
+            return {
+                id: Date.now().toString(),
+                title: title,
+                content: '',
+                updatedAt: Date.now()
+            };
+        }
+
+        function createNewFileHandler() {
+            const newFile = createNewFile();
+            files.unshift(newFile); // Add to top
+            saveFiles();
+            renderFileList();
+            loadFile(newFile.id);
+            
+            // Focus title input
+            setTimeout(() => titleInputEl.focus(), 100);
+        }
+
+        function deleteFile(e, id) {
+            e.stopPropagation();
+            if (!confirm('Are you sure you want to delete this page?')) return;
+            
+            files = files.filter(f => f.id !== id);
+            saveFiles();
+            
+            if (currentFileId === id) {
+                currentFileId = files.length > 0 ? files[0].id : null;
+                if (currentFileId) loadFile(currentFileId);
+                else {
+                    editorEl.value = '';
+                    titleInputEl.value = '';
+                    previewEl.innerHTML = '';
+                }
+            }
+            renderFileList();
+        }
+
+        function saveFiles() {
+            localStorage.setItem('notion-md-files', JSON.stringify(files));
+            if (currentFileId) localStorage.setItem('notion-md-last-id', currentFileId);
+        }
+
+        function loadFile(id) {
+            // Save current before switching
+            if (currentFileId) {
+                const currentFile = files.find(f => f.id === currentFileId);
+                if (currentFile) {
+                    currentFile.content = editorEl.value;
+                    currentFile.title = titleInputEl.value;
+                }
             }
 
-            // Auto-save function
-            const saveContent = () => {
-                localStorage.setItem('notion-clone-content', editor.innerHTML);
-                localStorage.setItem('notion-clone-title', pageTitle.value);
+            currentFileId = id;
+            const file = files.find(f => f.id === id);
+            
+            if (file) {
+                titleInputEl.value = file.title;
+                editorEl.value = file.content;
+                updatePreview();
                 
-                // Visual feedback could be added here
-                const status = document.createElement('span');
-                status.innerText = 'Saved';
-                status.style.position = 'fixed';
-                status.style.bottom = '20px';
-                status.style.right = '20px';
-                status.style.background = 'var(--color-primary)';
-                status.style.color = 'white';
-                status.style.padding = '8px 16px';
-                status.style.borderRadius = '20px';
-                status.style.fontSize = '12px';
-                status.style.zIndex = '1000';
-                status.style.animation = 'fadeIn 0.3s';
-                document.body.appendChild(status);
-                setTimeout(() => status.remove(), 1500);
-            };
+                // Update active state in sidebar
+                document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+                const activeEl = document.querySelector(`.file-item[data-id="${id}"]`);
+                if (activeEl) activeEl.classList.add('active');
+            }
+        }
 
-            // Debounce save
-            let timeoutId;
-            const handleInput = () => {
-                clearTimeout(timeoutId);
-                timeoutId = setTimeout(saveContent, 1000);
-                checkSlashCommand();
-                checkSelection();
-            };
-
-            editor.addEventListener('input', handleInput);
-            pageTitle.addEventListener('input', handleInput);
-            editor.addEventListener('keyup', handleInput);
-            editor.addEventListener('mouseup', checkSelection);
-            editor.addEventListener('click', () => {
-                slashMenu.style.display = 'none';
-            });
-
-            // Sidebar Toggle
-            toggleSidebarBtn.addEventListener('click', () => {
-                if (window.innerWidth <= 768) {
-                    sidebar.classList.toggle('open');
-                } else {
-                    sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
-                }
-            });
-
-            // Slash Command Logic
-            let cursorRange = null;
-
-            const checkSlashCommand = () => {
-                const selection = window.getSelection();
-                if (!selection.rangeCount) return;
+        function renderFileList() {
+            fileListEl.innerHTML = '';
+            files.forEach(file => {
+                const div = document.createElement('div');
+                div.className = `file-item ${file.id === currentFileId ? 'active' : ''}`;
+                div.dataset.id = file.id;
+                div.onclick = () => loadFile(file.id);
                 
-                const range = selection.getRangeAt(0);
-                const node = range.startContainer;
+                div.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+                        <i class="ph ph-file-text" style="color: var(--color-secondary);"></i>
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${file.title || 'Untitled'}</span>
+                    </div>
+                    <div class="file-item-actions">
+                        <button class="icon-btn-sm" onclick="deleteFile(event, '${file.id}')"><i class="ph ph-trash"></i></button>
+                    </div>
+                `;
+                fileListEl.appendChild(div);
+            });
+        }
+
+        function handleInput() {
+            const file = files.find(f => f.id === currentFileId);
+            if (file) {
+                file.content = editorEl.value;
+                file.updatedAt = Date.now();
                 
-                if (node.nodeType === 3) { // Text node
-                    const text = node.textContent;
-                    const caretOffset = range.startOffset;
-                    
-                    // Check if we are typing a slash at the start of a line or after space
-                    const beforeCaret = text.substring(0, caretOffset);
-                    if (beforeCaret.trim() === '/') {
-                        cursorRange = range.cloneRange();
-                        showSlashMenu(range);
-                    } else {
-                        slashMenu.style.display = 'none';
-                    }
+                // Auto-update title from first line if it's a header
+                const firstLine = editorEl.value.split('\n')[0];
+                if (firstLine.startsWith('# ') && !titleInputEl.value.startsWith('#')) {
+                    // Optional: Sync title with H1? Let's keep them separate for now to avoid annoyance
                 }
-            };
+                
+                saveFiles();
+                if (isPreviewMode) updatePreview();
+            }
+        }
 
-            const showSlashMenu = (range) => {
-                const rect = range.getBoundingClientRect();
-                slashMenu.style.display = 'flex';
-                slashMenu.style.top = `${rect.bottom + window.scrollY + 8}px`;
-                slashMenu.style.left = `${rect.left + window.scrollX}px`;
-            };
+        function handleTitleInput() {
+            const file = files.find(f => f.id === currentFileId);
+            if (file) {
+                file.title = titleInputEl.value;
+                saveFiles();
+                renderFileList(); // Re-render to update sidebar name
+            }
+        }
 
-            // Slash Menu Item Clicks
-            document.querySelectorAll('.slash-menu-item').forEach(item => {
-                item.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const command = item.dataset.command;
-                    const value = item.dataset.value || null;
+        function togglePreview() {
+            isPreviewMode = !isPreviewMode;
+            
+            if (isPreviewMode) {
+                editorEl.classList.add('hidden');
+                previewEl.classList.remove('hidden');
+                previewEl.style.display = 'block';
+                btnPreviewToggle.classList.add('active');
+                btnPreviewToggle.innerHTML = '<i class="ph ph-pencil-simple"></i><span style="font-size:13px;">Edit</span>';
+                updatePreview();
+            } else {
+                editorEl.classList.remove('hidden');
+                previewEl.classList.add('hidden');
+                previewEl.style.display = 'none';
+                btnPreviewToggle.classList.remove('active');
+                btnPreviewToggle.innerHTML = '<i class="ph ph-eye"></i><span style="font-size:13px;">Preview</span>';
+                editorEl.focus();
+            }
+        }
 
-                    if (cursorRange) {
-                        // Remove the '/' character
-                        const node = cursorRange.startContainer;
-                        if (node.nodeType === 3) {
-                            node.textContent = node.textContent.replace('/', '');
-                        }
-                        document.execCommand(command, false, value);
-                        slashMenu.style.display = 'none';
-                        editor.focus();
-                        saveContent();
-                    }
-                });
+        function updatePreview() {
+            const rawMarkdown = editorEl.value;
+            // Configure marked options if needed
+            marked.setOptions({
+                breaks: true,
+                gfm: true
             });
+            previewEl.innerHTML = marked.parse(rawMarkdown);
+        }
 
-            // Floating Toolbar Logic
-            const checkSelection = () => {
-                const selection = window.getSelection();
-                if (selection.toString().length > 0 && selection.anchorNode && editor.contains(selection.anchorNode)) {
-                    const range = selection.getRangeAt(0);
-                    const rect = range.getBoundingClientRect();
-                    
-                    floatingToolbar.style.display = 'flex';
-                    floatingToolbar.style.top = `${rect.top + window.scrollY - 50}px`;
-                    floatingToolbar.style.left = `${rect.left + window.scrollX + (rect.width / 2) - 100}px`; // Center roughly
-                } else {
-                    floatingToolbar.style.display = 'none';
-                }
-            };
+        function clearContent() {
+            if (confirm('Clear all content in this file?')) {
+                editorEl.value = '';
+                handleInput();
+                if (isPreviewMode) updatePreview();
+                editorEl.focus();
+            }
+        }
 
-            // Toolbar Button Clicks
-            document.querySelectorAll('.floating-toolbar button, .actions button').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const command = btn.dataset.command;
-                    const value = btn.dataset.value || null;
-                    
-                    if (command) {
-                        document.execCommand(command, false, value);
-                        editor.focus();
-                        saveContent();
-                        checkSelection(); // Refresh toolbar position/state
-                    }
-                });
-            });
+        function downloadFile() {
+            const file = files.find(f => f.id === currentFileId);
+            if (!file) return;
+            
+            const blob = new Blob([file.content], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${file.title || 'untitled'}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
 
-            // Prevent default behavior for Tab key to allow indentation logic later if needed
-            editor.addEventListener('keydown', (e) => {
-                if (e.key === 'Tab') {
-                    e.preventDefault();
-                    document.execCommand('insertText', false, '    ');
-                }
-            });
-        });
+        // Start
+        init();
+
     </script>
 </body>
 </html>
